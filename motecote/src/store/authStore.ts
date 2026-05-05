@@ -2,10 +2,12 @@ import { create } from 'zustand';
 import axios from 'axios'; // API'ye istek atmak için ekledik
 
 // 1. C#'tan gelecek olan kullanıcımızın şablonu
-export interface User {
-  id: string;
-  username: string;
-  role: string;
+interface User {
+  id: string | number; 
+  username: string;    
+  email?: string;      // İşte eksik olan kritik parça!
+  avatar?: string;
+  role: string;        
 }
 
 // 2. Senin kurduğun mükemmel State arayüzü (Hiç dokunmadık)

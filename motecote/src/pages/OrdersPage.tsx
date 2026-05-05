@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Package, FileText, Gift, X, Search, CheckCircle2, Printer, ExternalLink } from 'lucide-react';
-import { useOrderStore } from '@/store/orderStore';
 import { useAuthStore } from '@/store/authStore';
 import { useNotificationStore } from '@/store/notificationStore';
 import { mockRegisteredUsers } from '@/data/mockData';
 import { Link } from 'react-router-dom';
 import type { Order } from '@/types';
 import type { User } from '@/types';
+import axios from 'axios';
 
 /* ───────────── Fatura Modal ───────────── */
 function InvoiceModal({ order, onClose }: { order: Order; onClose: () => void }) {
@@ -76,7 +76,7 @@ function InvoiceModal({ order, onClose }: { order: Order; onClose: () => void })
                 <p className="text-xs font-semibold uppercase tracking-widest text-text-muted">Fatura No</p>
                 <p className="mt-0.5 font-mono text-sm font-bold text-white">{invoiceNo}</p>
                 <p className="mt-2 text-xs text-text-muted">
-                  {new Date(order.createdAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}
+                  {order.createdAt}
                 </p>
               </div>
             </div>
@@ -343,14 +343,57 @@ function GiftModal({ order, onClose }: { order: Order; onClose: () => void }) {
 
 /* ───────────── Ana Sayfa ───────────── */
 export default function OrdersPage() {
-  const { orders, fetchOrders } = useOrderStore();
+  // SİHİRLİ DOKUNUŞ: useOrderStore() (Zustand mock data) tamamen kaldırıldı. 
+  // Artık verileri doğrudan C# API'mizden React'ın kendi yerel state'ine çekeceğiz.
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+  
   const [invoiceOrder, setInvoiceOrder] = useState<Order | null>(null);
   const [giftOrder, setGiftOrder] = useState<Order | null>(null);
+  
+  const user = useAuthStore((s) => s.user);
 
   useEffect(() => {
-    if (useOrderStore.getState().orders.length === 0) fetchOrders();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    const fetchOrdersFromAPI = async () => {
+      if (!user) {
+        setLoading(false);
+        return;
+      }
+      try {
+        // C# API'ye bağlanıp gerçek siparişleri istiyoruz
+        const response = await axios.get(`https://localhost:7041/api/Orders/${user.id}`);
+        
+        // C#'tan gelen düz (flat) veriyi senin harika UI tasarımına uyacak formata (Order) dönüştürüyoruz
+        const realOrders: Order[] = response.data.map((o: any) => ({
+          id: o.id,
+          status: 'completed',
+          createdAt: o.date, // C#'tan formatlanmış tarih geliyor (Örn: 30 Nisan 2026)
+          paymentMethod: 'Kredi Kartı', 
+          total: o.price,
+          items: [{
+            quantity: 1,
+            film: {
+              id: o.id,
+              title: o.title,
+              poster: o.poster,
+              price: o.price,
+              discountPrice: o.price,
+              genres: ['Dijital Kopya'], // Sadece görsel amaçlı
+              year: new Date().getFullYear()
+            }
+          }]
+        }));
+        
+        setOrders(realOrders);
+      } catch (error) {
+        console.error("C# API'den siparişler çekilemedi:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchOrdersFromAPI();
+  }, [user]);
 
   const statusBadge = (status: string) => {
     const styles: Record<string, string> = {
@@ -370,6 +413,10 @@ export default function OrdersPage() {
     );
   };
 
+  if (loading) {
+    return <div className="flex min-h-[50vh] items-center justify-center text-accent-gold">Siparişleriniz Yükleniyor...</div>;
+  }
+
   return (
     <>
     <div className="mx-auto max-w-4xl px-4 py-8">
@@ -384,7 +431,7 @@ export default function OrdersPage() {
       {orders.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-text-muted">
           <Package size={48} className="mb-4 opacity-30" />
-          <p>Henüz siparişiniz yok</p>
+          <p>Henüz siparişiniz yok veya yüklenemedi.</p>
           <Link to="/explore" className="mt-4 text-accent-purple hover:underline">
             Alışverişe başla
           </Link>
@@ -405,18 +452,15 @@ export default function OrdersPage() {
                   {statusBadge(order.status)}
                 </div>
                 <span className="text-sm text-text-muted">
-                  {new Date(order.createdAt).toLocaleDateString('tr-TR', {
-                    day: 'numeric', month: 'long', year: 'numeric',
-                  })}
+                  {order.createdAt}
                 </span>
               </div>
 
               {/* Film listesi — tıklanabilir */}
               <div className="space-y-1">
                 {order.items.map((item) => (
-                  <Link
+                  <div
                     key={item.film.id}
-                    to={`/film/${item.film.id}`}
                     className="group flex items-center gap-3 rounded-xl p-2 -mx-2 transition-colors hover:bg-white/[0.04]"
                   >
                     <div className="relative overflow-hidden rounded-lg">
@@ -438,7 +482,7 @@ export default function OrdersPage() {
                     <span className="font-mono text-sm text-text-secondary shrink-0">
                       {(item.film.discountPrice ?? item.film.price).toFixed(2)} ₺
                     </span>
-                  </Link>
+                  </div>
                 ))}
               </div>
 
@@ -471,6 +515,6 @@ export default function OrdersPage() {
     {/* Modaller */}
     {invoiceOrder && <InvoiceModal order={invoiceOrder} onClose={() => setInvoiceOrder(null)} />}
     {giftOrder && <GiftModal order={giftOrder} onClose={() => setGiftOrder(null)} />}
-  </>
+    </>
   );
 }

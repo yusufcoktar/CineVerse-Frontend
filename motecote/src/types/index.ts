@@ -58,12 +58,12 @@ export interface Order {
 }
 
 export interface User {
-  id: string;
-  name: string;
-  email: string;
+  id: string | number; // C# tarafında ID'miz int (sayı) olduğu için number da ekledik
+  username: string;    // 'name' kelimesini C# modelimizdeki gibi 'username' yaptık!
+  email?: string;      // Hata ihtimaline karşı opsiyonel (?) yapabiliriz
   avatar?: string;
-  role: 'user' | 'admin';
-  loyaltyPoints: number;
+  role: string;        // C#'tan gelen yetkilerle esnek çalışması için genel string yaptık
+  loyaltyPoints?: number; // C# modelimizde henüz bu yok, hata vermemesi için opsiyonel (?) yaptık
 }
 
 export interface ChatMessage {

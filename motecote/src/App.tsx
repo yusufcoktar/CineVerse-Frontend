@@ -48,6 +48,7 @@ export default function App() {
   useEffect(() => {
     fetchFilmsFromApi();
   }, [fetchFilmsFromApi]);
+  
   return (
     <ErrorBoundary>
       <BrowserRouter>

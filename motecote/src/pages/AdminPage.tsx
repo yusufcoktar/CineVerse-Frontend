@@ -1,11 +1,12 @@
 ﻿import { useState, useMemo, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import axios from 'axios';
 import {
   LayoutDashboard, Film, Users, BarChart3, DollarSign,
   TrendingUp, ShoppingCart, Eye, Plus, LogOut, Menu, X, Settings,
   Mail, Lock, Trash2, Check, Search, ArrowUpRight, ArrowDownRight,
   Package, Star, Clock, Activity, Bell,
-  Edit3, Archive, Trash, MoreHorizontal, Globe,
+  Edit3, Archive, MoreHorizontal, Globe,
   Clapperboard, AlertTriangle, Download, MessageCircle, Send,
   Ban, UserMinus, FileText, Calendar,
 } from 'lucide-react';
@@ -233,26 +234,27 @@ export default function AdminPage() {
             return [...extras, tabBtn];
           })}
         </nav>
-
-        <div className="border-t border-white/[0.06] p-4 space-y-3">
-          <div className="flex items-center gap-3 rounded-xl bg-white/[0.03] px-3 py-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-accent-purple to-accent-purple/60 text-xs font-bold text-white">
-              {user?.name?.charAt(0) || 'A'}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="truncate text-sm font-medium text-white">{user?.name || 'Admin'}</p>
-              <p className="truncate text-[11px] text-text-muted">{user?.email || 'admin@cineverse.com'}</p>
-            </div>
-          </div>
-          <button
+<div className="border-t border-white/[0.06] p-4 space-y-3">
+  <div className="flex items-center gap-3 rounded-xl bg-white/[0.03] px-3 py-2.5">
+    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-accent-purple to-accent-purple/50 text-white font-bold">
+      {/* name yerine username yazdık ve büyük harf garantisi verdik */}
+      {user?.username?.charAt(0)?.toUpperCase() || 'A'}
+    </div>
+    <div className="flex-1 min-w-0">
+      {/* name yerine username yazdık */}
+      <p className="truncate text-sm font-medium text-white">{user?.username || 'Admin'}</p>
+      <p className="truncate text-[11px] text-text-muted">{user?.email || 'admin@cineverse.com'}</p>
+    </div>
+  </div>
+<button
             onClick={handleLogout}
-            className="flex w-full items-center gap-2 rounded-xl px-4 py-2.5 text-sm text-text-muted transition-colors hover:bg-accent-red/10 hover:text-accent-red"
+            className="flex w-full items-center gap-2 rounded-xl px-4 py-2.5 text-sm text-text-muted transition-colors hover:bg-white/[0.03] hover:text-white"
           >
             <LogOut size={16} />
             Çıkış Yap
           </button>
         </div>
-      </aside>
+      </aside>  {/* <--- İŞTE EKSİK OLAN VEYA SİLİNEN KRİTİK KISIM BURASI */}
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0">
@@ -549,37 +551,76 @@ function DashboardTab() {
     </div>
   );
 }
-
 /* ═══════════════════════════════════════════════════════════
    FILMS TAB
    ═══════════════════════════════════════════════════════════ */
 function FilmsTab() {
   const navigate = useNavigate();
-  const { films, updateFilm, deleteFilm } = useFilmStore();
   const { addNotification } = useNotificationStore();
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'published' | 'draft' | 'archived'>('all');
-  const [view, setView] = useState<'table' | 'grid'>('table');
+  
+  // 1. DÜZENLEME: statusFilter'dan 'draft' kaldırıldı
+  const [statusFilter, setStatusFilter] = useState<'all' | 'published' | 'archived'>('all');
+  const [view] = useState<'table' | 'grid'>('table');
   const [editingFilm, setEditingFilm] = useState<FilmType | null>(null);
   const [editForm, setEditForm] = useState({ price: '', discountPrice: '', status: '' as string });
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  
+  // (deleteConfirm state'i tamamen silindi)
+
+  const [dbFilms, setDbFilms] = useState<any[]>([]);
+
+  const fetchRealFilms = async () => {
+    try {
+      const token = useAuthStore.getState().token || localStorage.getItem('token');
+      const response = await axios.get('https://localhost:7041/api/Movies/AdminList', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      const mappedData = response.data.map((m: any) => ({
+        id: m.id,
+        title: m.title,
+        director: m.director || 'Bilinmiyor',
+        year: m.releaseYear, 
+        poster: m.posterUrl, 
+        genres: m.genres ? m.genres.map((g: any) => g.name || g) : [],
+        price: m.price,
+        discountPrice: m.discountedPrice || undefined,
+        rating: m.imdbRating,
+        resolution: m.resolution || 'HD',
+        status: m.isActive ? 'published' : 'archived' 
+      }));
+      
+      setDbFilms(mappedData);
+    } catch (error) {
+      console.error("SQL'den admin filmleri çekilirken hata:", error);
+    }
+  };
+
+  useEffect(() => {
+    fetchRealFilms();
+  }, []);
 
   const filtered = useMemo(() => {
-    return films.filter((film) => {
+    return dbFilms.filter((film) => {
       const matchSearch =
         film.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         film.director.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchStatus = statusFilter === 'all' || film.status === statusFilter;
+
+      const matchStatus = 
+        statusFilter === 'all' || 
+        (statusFilter === 'published' && film.status === 'published') ||
+        (statusFilter === 'archived' && (film.status === 'archived' || film.status === 'Arşiv'));
+        
       return matchSearch && matchStatus;
     });
-  }, [films, searchQuery, statusFilter]);
+  }, [dbFilms, searchQuery, statusFilter]);
 
+  // 2. DÜZENLEME: 'draft' sayacı silindi
   const statusCounts = useMemo(() => ({
-    all: films.length,
-    published: films.filter((f) => f.status === 'published').length,
-    draft: films.filter((f) => f.status === 'draft').length,
-    archived: films.filter((f) => f.status === 'archived').length,
-  }), [films]);
+    all: dbFilms.length,
+    published: dbFilms.filter((f) => f.status === 'published').length,
+    archived: dbFilms.filter((f) => f.status === 'archived').length,
+  }), [dbFilms]);
 
   const openEdit = (film: FilmType) => {
     setEditingFilm(film);
@@ -590,39 +631,67 @@ function FilmsTab() {
     });
   };
 
-  const saveEdit = () => {
+  const saveEdit = async () => {
     if (!editingFilm) return;
-    const updates: Partial<FilmType> = {
-      price: parseFloat(editForm.price) || editingFilm.price,
-      status: editForm.status as FilmType['status'],
-    };
-    if (editForm.discountPrice.trim()) {
-      updates.discountPrice = parseFloat(editForm.discountPrice);
-    } else {
-      updates.discountPrice = undefined;
+
+    const newPrice = parseFloat(editForm.price) || editingFilm.price;
+    const newDiscountPrice = editForm.discountPrice.trim() ? parseFloat(editForm.discountPrice) : null;
+    
+    let apiStatus = "Yayında";
+    if (editForm.status === "archived") apiStatus = "Arşiv"; // Draft seçeneği kaldırıldı
+
+    try {
+      const token = useAuthStore.getState().token || localStorage.getItem('token'); 
+      await axios.patch(`https://localhost:7041/api/Movies/QuickEdit/${editingFilm.id}`, 
+        {
+          price: newPrice,
+          discountedPrice: newDiscountPrice,
+          status: apiStatus
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      );
+
+      await fetchRealFilms(); 
+      addNotification({ type: 'film', title: 'Başarılı', message: `"${editingFilm.title}" güncel verileri SQL'den çekildi!` });
+      setEditingFilm(null);
+    } catch (error) {
+      console.error("C# Güncelleme hatası:", error);
+      addNotification({ type: 'system', title: 'Bağlantı Hatası', message: 'Film güncellenirken bir hata oluştu.' });
     }
-    updateFilm(editingFilm.id, updates);
-    addNotification({ type: 'film', title: 'Film Güncellendi', message: `"${editingFilm.title}" başarıyla güncellendi` });
-    setEditingFilm(null);
   };
 
-  const handleDelete = (id: string, title: string) => {
-    deleteFilm(id);
-    addNotification({ type: 'film', title: 'Film Silindi', message: `"${title}" katalogdan kaldırıldı` });
-    setDeleteConfirm(null);
-  };
+  // (handleDelete fonksiyonu tamamen silindi)
 
-  const handleArchive = (film: FilmType) => {
-    const newStatus = film.status === 'archived' ? 'published' : 'archived';
-    updateFilm(film.id, { status: newStatus });
-    addNotification({ type: 'film', title: newStatus === 'archived' ? 'Film Arşivlendi' : 'Film Yayınlandı', message: `"${film.title}" ${newStatus === 'archived' ? 'arşive alındı' : 'yeniden yayınlandı'}` });
+  const handleArchive = async (film: any) => {
+    try {
+      const token = useAuthStore.getState().token;
+      const newStatus = film.status === 'archived' || film.status === 'Arşiv' ? 'Yayında' : 'Arşiv';
+
+      await axios.patch(`https://localhost:7041/api/Movies/QuickEdit/${film.id}`, 
+        {
+          price: film.price,
+          status: newStatus
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      await fetchRealFilms();
+      addNotification({ type: 'film', title: 'Durum Güncellendi', message: `Film ${newStatus} durumuna çekildi.` });
+    } catch (error) {
+      console.error("Durum güncelleme hatası:", error);
+    }
   };
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
-          {(['all', 'published', 'draft', 'archived'] as const).map((status) => (
+          {/* 3. DÜZENLEME: Üst sekmelerden draft silindi, kod sadeleştirildi */}
+          {(['all', 'published', 'archived'] as const).map((status) => (
             <button
               key={status}
               onClick={() => setStatusFilter(status)}
@@ -632,7 +701,7 @@ function FilmsTab() {
                   : 'text-text-muted hover:bg-white/5 hover:text-text-secondary'
               }`}
             >
-              {status === 'all' ? 'Tümü' : status === 'published' ? 'Yayında' : status === 'draft' ? 'Taslak' : 'Arşiv'}
+              {status === 'all' ? 'Tümü' : status === 'published' ? 'Yayında' : 'Arşiv'}
               <span className="ml-1.5 opacity-60">{statusCounts[status]}</span>
             </button>
           ))}
@@ -657,20 +726,7 @@ function FilmsTab() {
             className="w-full rounded-xl border border-white/[0.06] bg-white/[0.03] py-2.5 pl-11 pr-4 text-sm text-white outline-none placeholder:text-text-muted transition-colors focus:border-accent-purple/40 focus:bg-white/[0.05]"
           />
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setView('table')}
-            className={`rounded-lg px-3 py-2.5 text-xs transition-colors ${view === 'table' ? 'bg-white/10 text-white' : 'text-text-muted hover:bg-white/5'}`}
-          >
-            <Menu size={16} />
-          </button>
-          <button
-            onClick={() => setView('grid')}
-            className={`rounded-lg px-3 py-2.5 text-xs transition-colors ${view === 'grid' ? 'bg-white/10 text-white' : 'text-text-muted hover:bg-white/5'}`}
-          >
-            <LayoutDashboard size={16} />
-          </button>
-        </div>
+        {/* Arama çubuğunun yanındaki GEREKSİZ (kopya) filtre butonları tamamen silindi! */}
       </div>
 
       <p className="text-xs text-text-muted">{filtered.length} film bulundu</p>
@@ -711,7 +767,7 @@ function FilmsTab() {
                   </td>
                   <td className="px-5 py-4">
                     <div className="flex flex-wrap gap-1">
-                      {film.genres.map((g) => (
+                      {film.genres.map((g : string) => (
                         <span key={g} className="rounded-md bg-white/[0.06] px-2 py-0.5 text-[10px] text-text-secondary">{g}</span>
                       ))}
                     </div>
@@ -739,25 +795,39 @@ function FilmsTab() {
                       'bg-white/[0.06] text-text-muted'
                     }`}>{film.resolution}</span>
                   </td>
+                  
+                  {/* 4. DÜZENLEME: Durum göstergesi Yayında/Arşiv olarak sabitlendi */}
                   <td className="px-5 py-4">
-                    <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${
-                      film.status === 'published' ? 'bg-green-500/15 text-green-400' :
-                      film.status === 'draft' ? 'bg-yellow-500/15 text-yellow-400' :
-                      'bg-white/[0.06] text-text-muted'
-                    }`}>
-                      {film.status === 'published' ? 'Yayında' : film.status === 'draft' ? 'Taslak' : 'Arşiv'}
-                    </span>
+                    <div className="flex items-center">
+                      {film.status === 'published' ? (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-green-500/15 px-2.5 py-1 text-[10px] font-semibold text-green-400">
+                          <span className="h-1.5 w-1.5 rounded-full bg-green-400"></span>
+                          Yayında
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] px-2.5 py-1 text-[10px] font-semibold text-text-muted">
+                          <span className="h-1.5 w-1.5 rounded-full bg-text-muted"></span>
+                          Arşiv
+                        </span>
+                      )}
+                    </div>
                   </td>
+
+                  {/* 5. DÜZENLEME: Çöp Kutusu (Trash) butonu tamamen silindi */}
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-1">
                       <button onClick={() => openEdit(film)} className="rounded-lg p-1.5 text-text-muted transition-colors hover:bg-white/[0.06] hover:text-accent-purple">
                         <Edit3 size={14} />
                       </button>
-                      <button onClick={() => handleArchive(film)} className="rounded-lg p-1.5 text-text-muted transition-colors hover:bg-white/[0.06] hover:text-accent-gold">
+                      <button 
+                        onClick={() => {
+                          if(window.confirm(`"${film.title}" filminin durumunu değiştirmek istediğinize emin misiniz?`)) {
+                            handleArchive(film);
+                          }
+                        }} 
+                        className="rounded-lg p-1.5 text-text-muted transition-colors hover:bg-white/[0.06] hover:text-accent-gold"
+                      >
                         <Archive size={14} />
-                      </button>
-                      <button onClick={() => setDeleteConfirm(film.id)} className="rounded-lg p-1.5 text-text-muted transition-colors hover:bg-accent-red/10 hover:text-accent-red">
-                        <Trash size={14} />
                       </button>
                     </div>
                   </td>
@@ -799,9 +869,7 @@ function FilmsTab() {
                 <button onClick={() => openEdit(film)} className="rounded-lg bg-black/60 p-1.5 backdrop-blur-sm hover:bg-black/80">
                   <Edit3 size={12} className="text-white" />
                 </button>
-                <button onClick={() => setDeleteConfirm(film.id)} className="rounded-lg bg-black/60 p-1.5 backdrop-blur-sm hover:bg-accent-red/80">
-                  <Trash size={12} className="text-white" />
-                </button>
+                {/* Izgara görünümündeki (Grid) çöp kutusu da silindi */}
               </div>
             </motion.div>
           ))}
@@ -859,8 +927,8 @@ function FilmsTab() {
                     onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
                     className="w-full rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-sm text-white outline-none focus:border-accent-purple/40 focus:ring-1 focus:ring-accent-purple/20"
                   >
+                    {/* 6. DÜZENLEME: Modal içindeki select menüsünden 'Taslak' kaldırıldı */}
                     <option value="published" className="bg-bg-secondary">Yayında</option>
-                    <option value="draft" className="bg-bg-secondary">Taslak</option>
                     <option value="archived" className="bg-bg-secondary">Arşiv</option>
                   </select>
                 </div>
@@ -879,47 +947,10 @@ function FilmsTab() {
         )}
       </AnimatePresence>
 
-      {/* Delete Confirm Modal */}
-      <AnimatePresence>
-        {deleteConfirm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={() => setDeleteConfirm(null)}>
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-sm rounded-2xl border border-accent-red/20 bg-bg-secondary p-6 shadow-2xl"
-            >
-              <div className="mb-4 flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-red/15">
-                  <AlertTriangle size={20} className="text-accent-red" />
-                </div>
-                <h3 className="font-semibold text-white">Filmi Sil</h3>
-              </div>
-              <p className="text-sm text-text-secondary mb-1">
-                <span className="font-semibold text-white">&ldquo;{films.find((f) => f.id === deleteConfirm)?.title}&rdquo;</span> filmini silmek istediğinize emin misiniz?
-              </p>
-              <p className="text-xs text-text-muted mb-5">Bu işlem geri alınamaz.</p>
-              <div className="flex gap-3 justify-end">
-                <button onClick={() => setDeleteConfirm(null)} className="rounded-xl bg-white/[0.06] px-5 py-2.5 text-sm font-medium text-text-secondary hover:bg-white/[0.1] transition-colors">
-                  İptal
-                </button>
-                <button
-                  onClick={() => handleDelete(deleteConfirm, films.find((f) => f.id === deleteConfirm)?.title || '')}
-                  className="flex items-center gap-2 rounded-xl bg-accent-red px-5 py-2.5 text-sm font-semibold text-white transition-all hover:bg-accent-red/90"
-                >
-                  <Trash2 size={14} />
-                  Sil
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      {/* 7. DÜZENLEME: Delete Confirm Modal (Arşivleme Modalı) tamamen silindi! */}
     </div>
   );
 }
-
 /* ═══════════════════════════════════════════════════════════
    ORDERS TAB
    ═══════════════════════════════════════════════════════════ */

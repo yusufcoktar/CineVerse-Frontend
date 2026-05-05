@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useNotificationStore } from '@/store/notificationStore'; // Yolun projene göre doğru olduğundan emin ol
 import {
   ArrowLeft, Upload, Film, Star, Clock, Globe, Tag, Users as UsersIcon,
   Award, Image, Play, DollarSign, Check, X, Plus, Trash2, Eye,
@@ -100,6 +101,8 @@ export default function AdminAddFilmPage() {
 
   // SİHİRLİ DOKUNUŞ: Cüzdandaki pasaportu alıyoruz
   const token = useAuthStore((s) => s.token);
+
+  const { addNotification } = useNotificationStore();
   // Form state
   const [title, setTitle] = useState('');
   const [originalTitle, setOriginalTitle] = useState('');
@@ -215,11 +218,15 @@ export default function AdminAddFilmPage() {
           navigate('/'); // Admin paneli boş olduğu için şimdilik anasayfaya yönlendirsin
         }, 2000);
       }
-    } catch (error) {
+   } catch (error) {
       console.error("Film eklenirken bir hata oluştu:", error);
-      alert("Film eklenemedi! Lütfen konsolu kontrol et.");
+      addNotification({
+        type: 'system',
+        title: 'Ekleme Başarısız',
+        message: 'Film sunucuya gönderilirken bir hata oluştu. Lütfen verileri kontrol edin.'
+      });
     }
-  };
+  }
 
   const inputClass =
     'w-full rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-sm text-white outline-none placeholder:text-text-muted transition-all focus:border-accent-purple/40 focus:bg-white/[0.06] focus:ring-1 focus:ring-accent-purple/20';

@@ -3,6 +3,7 @@ import { Film, Search, User, Menu, X, Library, LogOut } from 'lucide-react'; // 
 import { useState } from 'react';
 import { useAuthStore } from '@/store/authStore';
 import { motion, AnimatePresence, useScroll, useMotionValueEvent, useReducedMotion } from 'framer-motion';
+import { useCartStore } from '@/store/cartStore';
 
 export default function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -16,6 +17,8 @@ export default function Navbar() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+
+  const itemCount = useCartStore((s) => s.itemCount());
 
   const prefersReduced = useReducedMotion();
   const { scrollY } = useScroll();
@@ -32,6 +35,7 @@ export default function Navbar() {
 
   const handleLogout = () => {
     logout();
+    useCartStore.getState().clear(); // SİHİRLİ DOKUNUŞ: Çıkış yapınca sepeti de tamamen boşalt!
     navigate('/');
     setMobileOpen(false); // Çıkış yapınca mobil menüyü de kapat
   };
@@ -70,13 +74,19 @@ export default function Navbar() {
             <Link
               key={link.to}
               to={link.to}
-              className={`text-sm font-medium transition-colors ${
+              className={`relative text-sm font-medium transition-colors ${
                 isActive(link.to)
                   ? 'text-accent-red'
                   : 'text-text-secondary hover:text-white'
               }`}
             >
               {link.label}
+              {/* SİHİRLİ DOKUNUŞ: Eğer bu link '/cart' (Sepet) ise ve sepette ürün varsa baloncuk göster */}
+              {link.to === '/cart' && itemCount > 0 && (
+                <span className="absolute -right-3 -top-2 flex h-4 w-4 items-center justify-center rounded-full bg-accent-red text-[10px] font-bold text-white">
+                  {itemCount}
+                </span>
+              )}
             </Link>
           ))}
         </div>
@@ -194,16 +204,22 @@ export default function Navbar() {
                 </div>
               )}
 
-              {navLinks.map((link) => (
+             {navLinks.map((link) => (
                 <Link
                   key={link.to}
                   to={link.to}
                   onClick={() => setMobileOpen(false)}
-                  className={`rounded-lg px-4 py-2 text-sm ${
+                  className={`flex items-center justify-between rounded-lg px-4 py-2 text-sm ${
                     isActive(link.to) ? 'bg-accent-red/10 text-accent-red' : 'text-text-secondary'
                   }`}
                 >
-                  {link.label}
+                  <span>{link.label}</span>
+                  {/* MOBİL İÇİN SEPET SAYACI */}
+                  {link.to === '/cart' && itemCount > 0 && (
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent-red text-[10px] font-bold text-white">
+                      {itemCount}
+                    </span>
+                  )}
                 </Link>
               ))}
               
