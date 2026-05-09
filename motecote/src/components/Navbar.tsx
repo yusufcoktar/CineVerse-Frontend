@@ -1,9 +1,10 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Film, Search, User, Menu, X, Library, LogOut } from 'lucide-react'; // LogOut eklendi
-import { useState } from 'react';
+import { Film, Search, User, Menu, X, Library, LogOut } from 'lucide-react';
+import { useState, useEffect } from 'react'; // 🔥 SİHİRLİ DOKUNUŞ 1: useEffect eklendi
 import { useAuthStore } from '@/store/authStore';
 import { motion, AnimatePresence, useScroll, useMotionValueEvent, useReducedMotion } from 'framer-motion';
 import { useCartStore } from '@/store/cartStore';
+import { useFavoritesStore } from '@/store/favoritesStore';
 
 export default function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -19,10 +20,20 @@ export default function Navbar() {
   const logout = useAuthStore((s) => s.logout);
 
   const itemCount = useCartStore((s) => s.itemCount());
+  
+  // 🔥 SİHİRLİ DOKUNUŞ 2: Favorileri getirme fonksiyonunu store'dan çekiyoruz
+  const fetchFavorites = useFavoritesStore((s) => s.fetchFavorites);
 
   const prefersReduced = useReducedMotion();
   const { scrollY } = useScroll();
   useMotionValueEvent(scrollY, 'change', (v) => setScrolled(v > 80));
+
+  // 🔥 SİHİRLİ DOKUNUŞ 3: Kullanıcı girişliyse ve sayfa yenilendiyse favorileri hemen SQL'den getir!
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchFavorites();
+    }
+  }, [isAuthenticated, fetchFavorites]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,10 +45,17 @@ export default function Navbar() {
   };
 
   const handleLogout = () => {
-    logout();
-    useCartStore.getState().clear(); // SİHİRLİ DOKUNUŞ: Çıkış yapınca sepeti de tamamen boşalt!
-    navigate('/');
-    setMobileOpen(false); // Çıkış yapınca mobil menüyü de kapat
+    // 1. Kullanıcıyı sistemden çıkar (Token silme vb.)
+    logout(); 
+   
+    // 2. Sepeti temizle (Zaten yapıyordun)
+    useCartStore.getState().clear();
+   
+    // 3. Favorileri temizle ki başka hesaba geçmesin!
+    useFavoritesStore.getState().clearFavorites(); 
+   
+    // 4. Giriş sayfasına yönlendir
+    navigate('/login');
   };
 
   const navLinks = [
@@ -81,7 +99,6 @@ export default function Navbar() {
               }`}
             >
               {link.label}
-              {/* SİHİRLİ DOKUNUŞ: Eğer bu link '/cart' (Sepet) ise ve sepette ürün varsa baloncuk göster */}
               {link.to === '/cart' && itemCount > 0 && (
                 <span className="absolute -right-3 -top-2 flex h-4 w-4 items-center justify-center rounded-full bg-accent-red text-[10px] font-bold text-white">
                   {itemCount}
@@ -113,18 +130,17 @@ export default function Navbar() {
             <Library size={20} className={isActive('/library') ? 'text-accent-red' : 'text-text-secondary'} />
           </Link>
 
-        {/* SİHİRLİ DOKUNUŞ: Kullanıcı giriş yapmışsa Hoş Geldin, yapmamışsa Giriş/Kayıt butonları */}
           <div className="hidden md:flex items-center gap-3 ml-2">
             {isAuthenticated && user ? (
               <div className="flex items-center gap-4 border-l border-white/10 pl-4">
                 
-                {/* --- YENİ EKLENEN ADMİN BUTONU BAŞLANGIÇ --- */}
+                {/* ADMİN BUTONU BAŞLANGIÇ */}
                 {user.role === 'Admin' && (
                   <Link to="/admin" className="rounded-lg bg-accent-red/20 px-3 py-1.5 text-xs font-bold text-accent-red ring-1 ring-accent-red/30 hover:bg-accent-red/30 transition-colors">
                     Admin Paneli
                   </Link>
                 )}
-                {/* --- YENİ EKLENEN ADMİN BUTONU BİTİŞ --- */}
+                {/* ADMİN BUTONU BİTİŞ */}
 
                 <Link to="/settings" className="flex items-center gap-2 text-sm font-medium text-white hover:text-accent-red transition-colors">
                   <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-red/20 text-accent-red">
@@ -174,7 +190,6 @@ export default function Navbar() {
             className="overflow-hidden border-t border-white/5 bg-[#0a0a0f] md:hidden"
           >
             <div className="flex flex-col gap-2 p-4">
-             {/* Mobil kullanıcı profili (Giriş yapılmışsa) */}
               {isAuthenticated && user ? (
                 <div className="mb-2 flex flex-col gap-2 rounded-lg bg-white/5 p-3">
                   <div className="flex items-center justify-between">
@@ -190,7 +205,6 @@ export default function Navbar() {
                     <Link to="/settings" onClick={() => setMobileOpen(false)} className="text-xs text-accent-red">Ayarlar</Link>
                   </div>
                   
-                  {/* MOBİL İÇİN ADMİN BUTONU */}
                   {user.role === 'Admin' && (
                     <Link to="/admin" onClick={() => setMobileOpen(false)} className="mt-2 flex justify-center rounded-lg bg-accent-red/20 py-2 text-xs font-bold text-accent-red ring-1 ring-accent-red/30">
                       Admin Paneline Git
@@ -214,7 +228,6 @@ export default function Navbar() {
                   }`}
                 >
                   <span>{link.label}</span>
-                  {/* MOBİL İÇİN SEPET SAYACI */}
                   {link.to === '/cart' && itemCount > 0 && (
                     <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent-red text-[10px] font-bold text-white">
                       {itemCount}
@@ -228,11 +241,12 @@ export default function Navbar() {
                 <input
                   type="text"
                   placeholder="Film ara..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full bg-transparent px-2 py-2 text-sm text-white placeholder-text-muted outline-none"
                 />
               </div>
 
-              {/* Mobil Çıkış Butonu */}
               {isAuthenticated && (
                 <button 
                   onClick={handleLogout}

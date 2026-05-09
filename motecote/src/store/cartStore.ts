@@ -23,8 +23,12 @@ export const useCartStore = create<CartState>()(
 
       addItem: (film) =>
         set((state) => {
+          // 🔥 ÇİFT EKLENMEYİ ÖNLEYEN GÜVENLİK DUVARI:
           const existing = state.items.find((i) => i.film.id === film.id);
-          if (existing) return state;
+          if (existing) {
+             // Zaten sepetteyse hiçbir şey yapmadan mevcut listeyi geri dön.
+             return state; 
+          }
           return { items: [...state.items, { film, quantity: 1 }] };
         }),
 

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import axios from 'axios'; // 🔥 API bağlantısı için eklendi
 import { motion, AnimatePresence, useScroll, useTransform, useReducedMotion } from 'framer-motion';
 import { Play, ShoppingCart, ChevronRight, Sparkles, Film as FilmIcon, ChevronDown } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -7,21 +8,61 @@ import FilmCard from '@/components/FilmCard';
 import { MovieSeriesCard } from '@/components/MovieSeriesCard';
 import { useCartStore } from '@/store/cartStore';
 import { useUIStore } from '@/store/uiStore';
-import { useFilmStore } from '@/store/filmStore';
 import HeroParticles from '@/components/HeroParticles';
 import { useSplitText } from '@/hooks/useSplitText';
 import { SPRING_SOFT } from '@/constants/animations';
 
 export default function HomePage() {
-  const allFilms = useFilmStore((s) => s.films);
+  // --- 🔥 YENİ: GERÇEK API STATE'LERİ ---
+  const [allFilms, setAllFilms] = useState<Film[]>([]);
+  const [loading, setLoading] = useState(true);
+
   const [heroIdx, setHeroIdx] = useState(0);
   const [editorPicks, setEditorPicks] = useState<Film[]>([]);
-  const heroFilms = allFilms.slice(0, 5);
-  const heroFilm = heroFilms[heroIdx];
+  
   const addItem = useCartStore((s) => s.addItem);
   const toggleCartDrawer = useUIStore((s) => s.toggleCartDrawer);
+
+  // --- 🔥 API'DEN FİLMLERİ ÇEKME İŞLEMİ ---
+  useEffect(() => {
+    const fetchMovies = async () => {
+      try {
+        const response = await axios.get('https://localhost:7041/api/movies');
+        
+        // C#'tan gelen Movie nesnelerini Frontend'in Film modeline çeviriyoruz (Mapping)
+        const mappedFilms: Film[] = response.data.map((m: any) => ({
+          id: m.id.toString(), // Frontend ID'yi string bekliyor olabilir
+          title: m.title,
+          description: m.description,
+          price: m.price,
+          year: new Date(m.releaseDate).getFullYear(), // 2026-01-01 -> 2026
+          rating: m.imdbRating,
+          duration: m.duration,
+          resolution: m.resolution,
+          poster: m.posterUrl || 'https://via.placeholder.com/500x750?text=Afiş+Yok',
+          backdrop: m.backdropUrl || 'https://via.placeholder.com/1920x1080?text=Arka+Plan+Yok',
+          trailerUrl: m.trailerUrl,
+          // Genres listesi objelerden oluşuyor ({id: 1, name: "Aksiyon"}), sadece isimlerini alıyoruz
+          genres: m.genres ? m.genres.map((g: any) => g.name) : []
+        }));
+
+        setAllFilms(mappedFilms);
+      } catch (error) {
+        console.error("API'den filmler çekilirken hata oluştu:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchMovies();
+  }, []);
+
+  // Hesaplanan Veriler (Derived State)
+  const heroFilms = allFilms.slice(0, 5);
+  const heroFilm = heroFilms[heroIdx];
   const trendFilms = allFilms.slice(0, 8);
   const topRated = useMemo(() => [...allFilms].sort((a, b) => b.rating - a.rating).slice(0, 8), [allFilms]);
+  
   const seriesCollections = useMemo(() => {
     const normalizeSeriesBase = (title: string) => {
       const withoutPart = title
@@ -89,13 +130,36 @@ export default function HomePage() {
 
   // Auto-rotate hero every 6 seconds
   useEffect(() => {
+    if (heroFilms.length === 0) return;
     const timer = setInterval(() => {
       setHeroIdx((prev) => (prev + 1) % heroFilms.length);
     }, 6000);
     return () => clearInterval(timer);
   }, [heroFilms.length]);
 
-  if (!heroFilm) return null;
+  // --- 🔥 YÜKLEME EKRANI ---
+  if (loading) {
+    return (
+      <div className="flex h-[100vh] items-center justify-center bg-bg-primary">
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+          className="h-12 w-12 rounded-full border-4 border-accent-red/30 border-t-accent-red"
+        />
+      </div>
+    );
+  }
+
+  // Eğer veritabanında hiç film yoksa
+  if (!heroFilm) {
+    return (
+      <div className="flex h-[100vh] flex-col items-center justify-center bg-bg-primary text-text-muted">
+        <FilmIcon size={48} className="mb-4 opacity-50" />
+        <h2 className="font-heading text-2xl text-white">Henüz Film Yok</h2>
+        <p>Admin paneline giderek mağazaya birkaç film ekleyin!</p>
+      </div>
+    );
+  }
 
   const hasPlayed = typeof sessionStorage !== 'undefined' && sessionStorage.getItem('hero_played') === '1';
   const shouldAnimate = !hasPlayed;
@@ -106,7 +170,7 @@ export default function HomePage() {
       {/* Trend Bu Hafta */}
       <section className="mx-auto max-w-7xl px-4">
         <div className="mb-6 flex items-center justify-between">
-          <h2 className="font-heading text-2xl text-accent-gold">Trend Bu Hafta</h2>
+          <h2 className="font-heading text-2xl text-accent-gold">Mağazadaki Filmler</h2>
           <Link to="/explore" className="flex items-center gap-1 text-sm text-text-secondary hover:text-white">
             Tümünü Gör <ChevronRight size={16} />
           </Link>
@@ -127,105 +191,111 @@ export default function HomePage() {
       </section>
 
       {/* En Yüksek Puanlı */}
-      <section className="relative overflow-hidden">
-        <div className="absolute inset-0 -z-10">
-          <img
-            src={topRated[0]?.backdrop}
-            alt=""
-            className="h-full w-full object-cover opacity-10 blur-sm"
-          />
-          <div className="absolute inset-0 bg-gradient-to-r from-bg-primary via-bg-primary/90 to-bg-primary" />
-        </div>
-        <div className="mx-auto max-w-7xl px-4 py-10">
-          <div className="mb-6 flex items-center justify-between">
-            <h2 className="font-heading text-2xl text-accent-gold">En Yüksek Puanlı</h2>
-            <Link to="/explore" className="flex items-center gap-1 text-sm text-text-secondary hover:text-white">
-              Tümünü Gör <ChevronRight size={16} />
-            </Link>
+      {topRated.length > 0 && (
+        <section className="relative overflow-hidden">
+          <div className="absolute inset-0 -z-10">
+            <img
+              src={topRated[0]?.backdrop}
+              alt=""
+              className="h-full w-full object-cover opacity-10 blur-sm"
+            />
+            <div className="absolute inset-0 bg-gradient-to-r from-bg-primary via-bg-primary/90 to-bg-primary" />
           </div>
-          <motion.div
-            className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide"
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, amount: 0.15 }}
-            variants={{ visible: { transition: { staggerChildren: 0.07 } } }}
-          >
-            {topRated.map((film) => (
-              <motion.div key={film.id} className="flex-shrink-0" variants={{ hidden: { opacity: 0, y: 28, scale: 0.96 }, visible: { opacity: 1, y: 0, scale: 1 } }}>
-                <FilmCard film={film} size="lg" />
-              </motion.div>
-            ))}
-          </motion.div>
-        </div>
-      </section>
-
-      {/* Editör Seçimi — backdrop arka plan */}
-      <section className="relative overflow-hidden">
-        <div className="absolute inset-0 -z-10">
-          <img
-            src={editorPicks[0]?.backdrop}
-            alt=""
-            className="h-full w-full object-cover opacity-15 blur-sm"
-          />
-          <div className="absolute inset-0 bg-gradient-to-r from-bg-primary via-bg-primary/80 to-bg-primary" />
-        </div>
-        <div className="mx-auto max-w-7xl px-4 py-10">
-          <div className="mb-6 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Sparkles className="text-accent-gold" size={24} />
-              <h2 className="font-heading text-2xl text-accent-gold">Editör Seçimi</h2>
+          <div className="mx-auto max-w-7xl px-4 py-10">
+            <div className="mb-6 flex items-center justify-between">
+              <h2 className="font-heading text-2xl text-accent-gold">En Yüksek Puanlı</h2>
+              <Link to="/explore" className="flex items-center gap-1 text-sm text-text-secondary hover:text-white">
+                Tümünü Gör <ChevronRight size={16} />
+              </Link>
             </div>
-            <Link to="/explore" className="flex items-center gap-1 text-sm text-text-secondary hover:text-white">
-              Tümünü Gör <ChevronRight size={16} />
-            </Link>
+            <motion.div
+              className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide"
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true, amount: 0.15 }}
+              variants={{ visible: { transition: { staggerChildren: 0.07 } } }}
+            >
+              {topRated.map((film) => (
+                <motion.div key={film.id} className="flex-shrink-0" variants={{ hidden: { opacity: 0, y: 28, scale: 0.96 }, visible: { opacity: 1, y: 0, scale: 1 } }}>
+                  <FilmCard film={film} size="lg" />
+                </motion.div>
+              ))}
+            </motion.div>
           </div>
-          <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
-            {editorPicks.map((film, i) => (
-              <motion.div
-                key={film.id}
-                initial={{ opacity: 0, x: 30 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.1, duration: 0.5 }}
-                className="flex-shrink-0"
-              >
-                <FilmCard film={film} size="lg" />
-              </motion.div>
-            ))}
+        </section>
+      )}
+
+      {/* Editör Seçimi */}
+      {editorPicks.length > 0 && (
+        <section className="relative overflow-hidden">
+          <div className="absolute inset-0 -z-10">
+            <img
+              src={editorPicks[0]?.backdrop}
+              alt=""
+              className="h-full w-full object-cover opacity-15 blur-sm"
+            />
+            <div className="absolute inset-0 bg-gradient-to-r from-bg-primary via-bg-primary/80 to-bg-primary" />
           </div>
-        </div>
-      </section>
+          <div className="mx-auto max-w-7xl px-4 py-10">
+            <div className="mb-6 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Sparkles className="text-accent-gold" size={24} />
+                <h2 className="font-heading text-2xl text-accent-gold">Editör Seçimi</h2>
+              </div>
+              <Link to="/explore" className="flex items-center gap-1 text-sm text-text-secondary hover:text-white">
+                Tümünü Gör <ChevronRight size={16} />
+              </Link>
+            </div>
+            <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
+              {editorPicks.map((film, i) => (
+                <motion.div
+                  key={film.id}
+                  initial={{ opacity: 0, x: 30 }}
+                  whileInView={{ opacity: 1, x: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: i * 0.1, duration: 0.5 }}
+                  className="flex-shrink-0"
+                >
+                  <FilmCard film={film} size="lg" />
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Koleksiyonlar — Film Serileri */}
-      <section className="mx-auto max-w-7xl px-4">
-        <div className="mb-6 flex items-center gap-3">
-          <FilmIcon className="text-accent-gold" size={24} />
-          <h2 className="font-heading text-2xl text-accent-gold">Koleksiyonlar</h2>
-        </div>
-      </section>
+      {seriesCollections.length > 0 && (
+        <>
+          <section className="mx-auto max-w-7xl px-4">
+            <div className="mb-6 flex items-center gap-3">
+              <FilmIcon className="text-accent-gold" size={24} />
+              <h2 className="font-heading text-2xl text-accent-gold">Koleksiyonlar</h2>
+            </div>
+          </section>
 
-      {/* Movie Series — 2 Column Grid */}
-      <div className="max-w-7xl mx-auto px-4 pb-16">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {seriesCollections.map((series, index) => {
-            return (
-              <motion.div
-                key={series.name}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: '-50px' }}
-                transition={{ duration: 0.4, delay: index * 0.08 }}
-              >
-                <MovieSeriesCard
-                  title={series.name}
-                  movies={series.movies}
-                />
-              </motion.div>
-            );
-          })}
-        </div>
-      </div>
-
+          <div className="max-w-7xl mx-auto px-4 pb-16">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {seriesCollections.map((series, index) => {
+                return (
+                  <motion.div
+                    key={series.name}
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true, margin: '-50px' }}
+                    transition={{ duration: 0.4, delay: index * 0.08 }}
+                  >
+                    <MovieSeriesCard
+                      title={series.name}
+                      movies={series.movies}
+                    />
+                  </motion.div>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      )}
     </HeroWrapper>
   );
 }
@@ -390,4 +460,3 @@ function HeroWrapper({ shouldAnimate, heroFilm, heroFilms, heroIdx, setHeroIdx, 
     </div>
   );
 }
-
